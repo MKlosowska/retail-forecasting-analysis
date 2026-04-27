@@ -1,8 +1,10 @@
 install.packages("fpp3")
 install.packages("tseries")
+install.packages("tidyr")
 
 library(tseries)
 library(fpp3)
+library(tidyr)
 
 ######################################## 1.
 
@@ -317,17 +319,73 @@ fc_ets |>
 # Prognoza idealnie podąża za linią danych rzeczywistych. 
 # Model dobrze przewidział, że im wyższa sprzedaż, tym wyższe skoki w grudniu. 
 
+######################################## 4. Modele ARIMA
 
+## 1. Automatyczny dobór modelu ARIMA
+fit_arima <- train |>
+  model(
+    `ARIMA automatyczna` = ARIMA(Turnover)
+  )
 
+fit_arima |> report()
 
+# Interpretacja - model: (2,1,2)(0,1,2)[12]
 
+# RÓŻNICOWANIE (d=1, D=1): Model automatycznie zastosował różnicowanie 
+# zwykłe i sezonowe. Dzięki temu dane stały się stacjonarne.
 
+# STRUKTURA: Model jest bardzo złożony. Wykorzystuje 2 parametry AR (autokorelacja) 
+# i 2 parametry MA (średnia ruchoma) zarówno dla części zwykłej, jak i sezonowej.
 
+# DOPASOWANIE: sigma^2 = 8.171 sugeruje niską wariancję błędu.
+# Niskie wartości s.e. (błędu standardowego) przy współczynnikach 
+# świadczą o ich istotności statystycznej.
 
+## 2. Sprawdzenie stacjonarności danych bazowych
+# Wyciągamy informację o parametrach modelu w formie tabeli
+fit_arima |> 
+  tidy() |> 
+  select(.model, term) |> 
+  distinct()
 
+# Interpretacja
 
+# 1. AR1, AR2 (Autoregresja): Model uwzględnia korelacje z dwoma poprzednimi 
+#    miesiącami
 
+# 2. MA1, MA2 (Średnia ruchoma): Model koryguje prognozę na podstawie 
+#    błędów z dwóch poprzednich okresów.
 
+# 3. SMA1, SMA2 (Sezonowa średnia ruchoma): 
+#    Model koryguje bieżącą prognozę sezonową, patrząc na błędy prognoz 
+#    z tych samych miesięcy w poprzednich latach.
 
+# Tabela potwierdza, że model jest w pełni sezonowy.
 
+# Wizualna reszt 
+fit_arima |> 
+  select(`ARIMA automatyczna`) |> 
+  gg_tsresiduals() +
+  labs(title = "Analiza reszt modelu ARIMA - weryfikacja stacjonarności")
+
+# Interpretacja:
+# Reszty oscylują wokół zera, co potwierdza stacjonarność. Widać jednak, że rozrzut rośnie.
+# Model ARIMA pozbył się autokorelacji znacznie lepiej niż SNAIVE, 
+# Histogram błędów przypomina rozkład normalnyi jest wycentrowany na zerze, więc
+# nie jest obciążony (nie myli się systematycznie w jedną stronę).
+# Reszty są bliskie białemu szumowi.
+
+## 3. Porównanie ARIMA z HW Multiplikatywnym
+fc_arima <- fit_arima |> forecast(test)
+
+accuracy_comparison <- bind_rows(
+  fc_ets |> accuracy(myseries), 
+  fc_arima |> accuracy(myseries)
+) |> 
+  select(.model, RMSE, MAE, MAPE, MASE) |> 
+  arrange(RMSE)
+
+accuracy_comparison
+
+# Wniosek: ARIMA jest najlepszym modelem. Ma najniższe RMSE (15.8) oraz MAPE (7.12%).
 
