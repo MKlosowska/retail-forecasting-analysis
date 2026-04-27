@@ -1,6 +1,6 @@
-install.packages("fpp3")
-install.packages("tseries")
-install.packages("tidyr")
+# install.packages("fpp3")
+# install.packages("tseries")
+# install.packages("tidyr")
 
 library(tseries)
 library(fpp3)
@@ -388,4 +388,83 @@ accuracy_comparison <- bind_rows(
 accuracy_comparison
 
 # Wniosek: ARIMA jest najlepszym modelem. Ma najniższe RMSE (15.8) oraz MAPE (7.12%).
+
+
+######################################## 5. 
+
+# 1. Budowa modeli
+fit_all <- train |>
+  model(
+    `Naiwny` = NAIVE(Turnover),
+    `S-Naiwny` = SNAIVE(Turnover),
+    `ETS (Auto)` = ETS(Turnover),
+    `ARIMA (Auto)` = ARIMA(Turnover),
+    `Theta` = THETA(Turnover),
+    `Regresja (Trend+Sezon)` = TSLM(Turnover ~ trend() + season()),
+    `Sieć Neuronowa (NNAR)` = NNETAR(Turnover)
+  )
+
+# 2. Sprawdzenie braków - nie ma NULL, więc modele zostały zbudowane poprawnie.
+fit_all 
+
+# Statystyki dopasowania dla wszystkich modeli
+glance(fit_all)
+
+
+# ARIMA ma najniższy wskaźnik AIC (1653) oraz najwyższą wiarygodność (log_lik = -819).
+# Model ETS ma najmniejszy błąd (sigma2), więc niemal idealnie dopasował się do danych historycznych.
+# Modele Naiwne i Regresja mają wysoką wariancję błędu (sigma2), więc nie radzą sobie z szumem w danych tak dobrze jak ARIMA.
+# ARIMA i ETS to najlepsze modele. 
+
+# 3.Prognozy na test
+fc_all <- fit_all |> forecast(test)
+
+# 4. Porównanie
+summary_metrics <- fc_all |> 
+  accuracy(myseries) |>
+  select(.model, RMSE, MAE, MAPE, MASE) |>
+  mutate(MASE_pod_1 = MASE < 1) |>
+  arrange(RMSE)
+
+summary_metrics
+
+# Interpretacja:
+
+# 1. Najlepszym modelem okazał się model ARIMA (Auto) RMSE = 15.8. 
+# Model ten najlepiej radzi sobie z jednoczesnym opanowaniem trendu 
+# wzrostowego i silnej sezonowości sprzedaży żywności na Tasmanii.
+# ARIMA uzyskała najniższy wynik MASE = 2.39. Jest ona ponad dwukrotnie lepsza od metody naiwnej.
+
+# 2. Na drugim miejscu ETS (16.4), a na trzecim Theta (20.7).
+
+# 3. Sieć Neuronowa (21.9) i Regresja (25.6) okazały się 
+# znacznie gorsze. Sugeruje to, że proste algorytmy statystyczne 
+# są w tym przypadku skuteczniejsze niż uczenie maszynowe.
+
+# 5. Wizualne porównanie trzech najlepszych modeli z danymi rzeczywistymi)
+top_3_models <- summary_metrics |> head(3) |> pull(.model)
+
+fc_all |>
+  filter(.model %in% top_3_models) |>
+  autoplot(myseries |> filter_index("2005 Jan" ~ .), level = NULL) +
+  labs(title = "Top 3 Modele vs Rzeczywista Sprzedaż",
+       subtitle = "Porównanie prognoz na próbie testowej",
+       y = "Turnover") +
+  theme_minimal()
+
+# Interpretacja
+
+# 1. ARIMA i ETS: Oba modele niemal idealnie pokrywają się ze sobą. 
+#    Bardzo dobrze wyłapały rosnącą amplitudę sezonowości. 
+#    Dobrze przewidziały gwałtowny skok sprzedaży (2018).
+
+# 2. THETA: Wyraźnie odstaje od reszty.
+
+# Wykres potwierdza, że najlepszym modelem jest ARIMA.
+
+
+
+
+
+
 
