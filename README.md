@@ -446,3 +446,99 @@ accuracy_comparison
 **Interpretacja:** Model **ARIMA** okazał się być najlepszym modelem. Najlepiej radzi sobie z wyłapywaniem trendu i sezonowości.
 * **RMSE (15.8):** Najmniejsze odchylenie od wartości rzeczywistych.
 * **MAPE (7.12%):** Najwyższa precyzja procentowa.
+
+## 5. Modele lokalne vs Modele Globalne
+
+Przetestowano modele naiwne, regresyjne, wygładzania wykładniczego, ARIMA oraz sieci neuronowe
+
+### 5.1 Budowa i dopasowanie modeli
+
+```r
+# Budowa modeli
+fit_all <- train |>
+  model(
+    `Naiwny` = NAIVE(Turnover),
+    `S-Naiwny` = SNAIVE(Turnover),
+    `ETS (Auto)` = ETS(Turnover),
+    `ARIMA (Auto)` = ARIMA(Turnover),
+    `Theta` = THETA(Turnover),
+    `Regresja (Trend+Sezon)` = TSLM(Turnover ~ trend() + season()),
+    `Sieć Neuronowa (NNAR)` = NNETAR(Turnover)
+  )
+
+# Sprawdzenie braków
+fit_all 
+
+# Statystyki dopasowania dla wszystkich modeli
+glance(fit_all)
+```
+![Statystyki dopasowania](images/5_1_statystyki.png)
+
+**Interpretacja**
+* ARIMA ma najniższy wskaźnik AIC (1653) oraz najwyższą wiarygodność (log_lik = -819).
+* Model ETS ma najmniejszy błąd $\sigma^2$, więc niemal idealnie dopasował się do danych historycznych.
+* Modele Naiwne i Regresja mają wysoką wariancję błędu $\sigma^2$, więc nie radzą sobie z szumem w danych tak dobrze jak ARIMA.
+
+ARIMA i ETS to najlepsze modele. 
+
+```r
+# Prognozy na zbiorze testowym
+fc_all <- fit_all |> forecast(test)
+
+# Porównanie
+summary_metrics <- fc_all |> 
+  accuracy(myseries) |>
+  select(.model, RMSE, MAE, MAPE, MASE) |>
+  mutate(MASE_pod_1 = MASE < 1) |>
+  arrange(RMSE)
+
+summary_metrics
+```
+
+![Ocena jakości prognoz na zbiorze testowym](images/5_2_ocena_jakosci_prognoz.png)
+
+**Interpretacja:**
+
+* **ARIMA (Auto)** RMSE = 15.8 okazał się być najlepszym modelem. Najlepiej radzi sobie z jednoczesnym opanowaniem trendu wzrostowego i silnej sezonowości sprzedaży żywności na Tasmanii. ARIMA uzyskała najniższy wynik MASE = 2.39. Jest ona ponad dwukrotnie lepsza od metody naiwnej.
+* Na drugim miejscu **ETS** (RMSE = 16.4), a na trzecim **Theta** (RMSE = 20.7).
+* **Sieć Neuronowa** (RMSE = 21.9) i **Regresja** (RMSE = 25.6) okazały się znacznie gorsze. Sugeruje to, że proste algorytmy statystyczne są w tym przypadku skuteczniejsze niż uczenie maszynowe.
+
+### 5.2 Wizualne porównanie trzech najlepszych modeli z danymi rzeczywistymi
+---
+
+```r
+# Wybór 3 najlepszych modeli
+top_3_models <- summary_metrics |> head(3) |> pull(.model)
+
+# Wykres porównawczy
+fc_all |>
+  filter(.model %in% top_3_models) |>
+  autoplot(myseries |> filter_index("2005 Jan" ~ .), level = NULL) +
+  labs(title = "Top 3 Modele vs Rzeczywista Sprzedaż",
+       subtitle = "Porównanie prognoz na próbie testowej (po 2011 roku)",
+       y = "Turnover", x = "Czas") +
+  theme_minimal()
+```
+
+![Wizualne porównanie najlepszych modeli](images/top_3_modele.png)
+
+**Interpretacja:**
+
+* **ARIMA i ETS:** Oba modele niemal idealnie pokrywają się ze sobą. Bardzo dobrze wyłapały rosnącą amplitudę sezonowości. Dobrze przewidziały gwałtowny skok sprzedaży (2018).
+* **THETA:** Wyraźnie odstaje od reszty.
+
+Wykres potwierdza, że najlepszym modelem jest ARIMA.
+
+## 6. Podsumowanie i wnioski końcowe
+
+Na podstawie przeprowadzonej analizy sformułowano następujące wnioski:
+
+### 1. Charakterystyka szeregu czasowego
+* **Silna dynamika:** Dane charakteryzują się wyraźnym, długookresowym trendem wzrostowym oraz bardzo silną sezonowością roczną, osiągającą szczyty w okresach grudniowych.
+* **Zmienność amplitudy:** Zaobserwowano, że wahania sezonowe rosną wraz ze wzrostem poziomu sprzedaży.
+
+### 2. Efektywność metod prognostycznych
+* **Przewaga metod zaawansowanych:** Metody naiwne (SNAIVE) oraz proste modele regresyjne  okazały się niewystarczające, ponieważ generowały błędy MAPE przekraczające 10%.
+* **Najlepszy model:** Model **ARIMA(2,1,2)(0,1,2)[12]** okazał się najbardziej precyzyjny, osiągając błąd **MAPE na poziomie 7.12%**. Bardzo zbliżone wyniki uzyskał model **ETS**.
+* W analizowanym przypadku klasyczne modele statystyczne (ARIMA/ETS) przewyższyły skutecznością sieci neuronowe. 
+
