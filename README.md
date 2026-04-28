@@ -372,3 +372,77 @@ Poniższy wykres prezentuje dopasowanie modelu HW Multiplikatywnego do danych rz
 
 **Wnioski:**
 Prognoza niemal idealnie pokrywa się z danymi rzeczywistymi. Model dobrze przewidział, że im wyższa sprzedaż, tym wyższe skoki w grudniu.
+
+## 4. Modele ARIMA
+
+### 4.1 Automatyczny dobór modelu ARIMA
+---
+Zastosowano funkcję automatycznego doboru parametrów, która wybrała model: **ARIMA(2,1,2)(0,1,2)[12]**.
+
+```r
+fit_arima <- train |>
+  model(
+    `ARIMA automatyczna` = ARIMA(Turnover)
+  )
+
+fit_arima |> report()
+```
+![Wykres finalny ARIMA](images/automatyczna_arima.png)
+
+**Interpretacja wyników:**
+* **Różnicowanie (d=1, D=1)** Model automatycznie zastosował różnicowanie zwykłe i sezonowe. Dzięki temu dane stały się stacjonarne.
+* **Struktura:** Model jest bardzo złożony. Wykorzystuje 2 parametry AR (autokorelacja) i 2 parametry MA (średnia ruchoma) zarówno dla części zwykłej, jak i sezonowej.
+* **Wariancja błędu:** Wartość $\sigma^2 = 8.171$ sugeruje niską wariancję błędu.
+
+### 4.2 Analiza parametrów i stacjonarności
+---
+
+```r
+fit_arima |> 
+  tidy() |> 
+  select(.model, term) |> 
+  distinct()
+```
+![Analiza parametrów ARIMA](images/4_2_arima.png)
+
+**Interpretacja:**
+1. **AR1, AR2 (Autoregresja):** Model uwzględnia korelacje z dwoma poprzednimi miesiącami.
+2. **MA1, MA2 (Średnia ruchoma):** Model koryguje prognozę na podstawie błędów z dwóch poprzednich okresów.
+3. **SMA1, SMA2 (Sezonowa średnia ruchoma):** Model koryguje bieżącą prognozę sezonową, patrząc na błędy prognoz z tych samych miesięcy w poprzednich latach.
+
+Tabela potwierdza, że model jest sezonowy.
+
+```r
+# Wizualna analiza reszt:
+fit_arima |> 
+  select(`ARIMA automatyczna`) |> 
+  gg_tsresiduals() +
+  labs(title = "Analiza reszt modelu ARIMA - weryfikacja stacjonarności")
+```
+![Analiza reszt ARIMA](images/4_2_arima_reszty.png)
+
+**Wnioski:**
+* **Stacjonarność:** Reszty oscylują wokół zera, co potwierdza stacjonarność. Widać jednak, że rozrzut rośnie.
+* **Autokorelacja:** ARIMA pozbyła się korelacji znacznie lepiej niż modele naiwne. Reszty są bardzo bliskie białemu szumowi.
+* **Rozkład błędów:** Histogram przypomina rozkład normalny i jest wycentrowany na zerze. Oznacza to, że model nie jest obciążony (nie myli się systematycznie w żadną stronę).
+
+### 4.3 Porównanie modeli: ARIMA vs ETS (Holt-Winters)
+---
+
+```r
+fc_arima <- fit_arima |> forecast(test)
+
+accuracy_comparison <- bind_rows(
+  fc_ets |> accuracy(myseries), 
+  fc_arima |> accuracy(myseries)
+) |> 
+  select(.model, RMSE, MAE, MAPE, MASE) |> 
+  arrange(RMSE)
+
+accuracy_comparison
+```
+![Analiza reszt ARIMA](images/4_3_arima.png)
+
+**Interpretacja:** Model **ARIMA** okazał się być najlepszym modelem. Najlepiej radzi sobie z wyłapywaniem trendu i sezonowości.
+* **RMSE (15.8):** Najmniejsze odchylenie od wartości rzeczywistych.
+* **MAPE (7.12%):** Najwyższa precyzja procentowa.
