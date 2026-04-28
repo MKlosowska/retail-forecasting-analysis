@@ -293,3 +293,82 @@ Rzeczywista sprzedaż rosła szybciej, niż przewidział to model.
 * **Histogram:** Rozkład błędów jest przesunięty w prawo (średnia > 0). Prognozy są zbyt niskie względem rzeczywistości.
 
 **Wniosek:** Mimo że Box-Cox + SNAIVE był najlepszy w tej grupie, analiza reszt pokazuje, że potrzebujemy bardziej zaawansowanych modeli (jak ARIMA lub ETS), które lepiej radzą sobie z autokorelacją reszt.
+
+## 3. Modele ETS 
+
+W tej sekcji testujemy zaawansowane modele wykładnicze, które potrafią lepiej dostosować się do trendu i zmieniającej się amplitudy sezonowości.
+
+### 3.1 Dopasowanie modeli Holta-Wintersa
+---
+Do analizy wybrano trzy warianty modeli:
+1. **HW Multiplikatywny:** Uwzględnia fakt, że wahania sezonowe rosną wraz z trendem.
+2. **HW Tłumiony:** Zakłada, że trend może wyhamować w przyszłości.
+3. **Model STL+ETS:** Połączenie dekompozycji z modelem ETS na danych odsezonowanych.
+
+```r
+fit_ets <- train |>
+  model(
+    `HW Multiplikatywny` = ETS(Turnover ~ error("M") + trend("A") + season("M")),
+    `HW Tłumiony` = ETS(Turnover ~ error("M") + trend("Ad") + season("M")),
+    `Model STL+ETS` = decomposition_model(
+      STL(box_cox(Turnover, lambda) ~ trend(window = 13) + season(window = "periodic")),
+      ETS(season_adjust ~ error("A") + trend("A") + season("N"))
+    )
+  )
+```
+### 3.2 Porównanie dokładności
+---
+```r
+fc_ets <- fit_ets |> forecast(test)
+
+fc_ets_accuracy <- fc_ets |> 
+  accuracy(myseries) |>
+  select(.model, RMSE, MAE, MAPE, MASE) |>
+  arrange(RMSE)
+
+fc_ets_accuracy
+```
+![Porównanie dokładności](images/3_2_porownanie_dokladnosci.png)
+
+**Wnioski:**
+* Model **Holta-Wintersa Multiplikatywny** okazał się najlepszym modelem.
+* RMSE spadło niemal o połowę (z 29.2 do 16.4), a błąd MAPE obniżył się do poziomu **7.3%**.
+* Model STL+ETS okazał się najgorszy.
+
+### 3.3 Analiza reszt najlepszego modelu
+---
+```r
+best_ets_name <- fc_ets_accuracy$.model[which.min(fc_ets_accuracy$RMSE)]
+
+fit_ets |>
+  select(all_of(best_ets_name)) |>
+  gg_tsresiduals() +
+  labs(title = paste("Analiza reszt dla modelu HW Multiplikatywnego:", best_ets_name))
+```
+
+![Analiza reszt ETS](images/ets_residuals_plot.png)
+
+**Interpretacja:**
+1. **Wykres czasowy:** W przeciwieństwie do modelu SNAIVE, tutaj reszty oscylują wokół zera. Model przestał systematycznie niedoszacowywać prognozy.
+2. **ACF reszt:** Słupki w ACF są znacznie niższe niż wcześniej, więc model ETS znacznie lepiej sobie radzi. Nadal występują sezonowe przekroczenia (np. luty, grudzień), ale błąd jest dużo mniejszy.
+3. **Histogram:** Rozkład błędów jest symetryczny i przypomina rozkład normalny. Reszty są bliższe białemu szumowi niż w poprzednich testach.
+
+### 3.4 Wykres prognozy ETS
+---
+
+```r
+fc_ets |>
+  filter(.model == best_ets_name) |>
+  autoplot(myseries, level = NULL) +
+  labs(
+    title = paste("Najlepsza prognoza metodą ETS:", best_ets_name),
+    subtitle = "Porównanie z rzeczywistymi danymi po 2011 roku",
+    x = "Czas", y = "Turnover"
+  )
+```
+Poniższy wykres prezentuje dopasowanie modelu HW Multiplikatywnego do danych rzeczywistych na zbiorze testowym (po 2011 roku).
+
+![Prognoza ETS](images/ets_final_forecast.png)
+
+**Wnioski:**
+Prognoza niemal idealnie pokrywa się z danymi rzeczywistymi. Model dobrze przewidział, że im wyższa sprzedaż, tym wyższe skoki w grudniu.
