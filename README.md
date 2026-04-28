@@ -196,3 +196,100 @@ myseries |>
 
 * **Podobieństwo do logarytmu:** Wykres po transformacji Box-Cox przy wartości $\lambda = 0.09$ jest bardzo zbliżony do wykresu po transformacji logarytmicznej. Wynika to z faktu, że parametr $\lambda$ jest bliski $0$.
 * **Efekt stabilizacji:** Zastosowana transformacja jest w tym przypadku odpowiednia, ponieważ skutecznie stabilizuje wariancję.
+
+## 2. Budowa modeli bazowych i ocena prognoz
+
+W tej sekcji dzielimy dane na zbiór uczący i testowy, sprawdzamy stacjonarność oraz porównujemy proste metody prognozowania.
+
+### 2.1 Podział na zbiór uczący i testowy
+---
+Dane zostały podzielone na: 
+* **Zbiór uczący:** dane sprzed 2011 roku.
+* **Zbiór testowy:** dane od 2011 roku.
+
+```r
+train <- myseries |>
+  filter(Month < yearmonth("2011 Jan"))
+
+test <- myseries |>
+  filter(Month >= yearmonth("2011 Jan"))
+```
+### 2.2 Testy stacjonarności
+---
+Aby sprawdzić, czy szereg wymaga różnicowania, przeprowadzono dwa testy statystyczne:
+1. **Test ADF:** p-value > 0.05, więc nie ma podstaw do odrzucenia H0. Szereg jest NIESTACJONARNY
+2. **Test KPSS:** p-value < 0.05, co potwierdza, że szereg jest **niestacjonarny**.
+
+```r
+adf_result <- adf.test(train$Turnover)
+adf_result
+
+train |>
+  features(Turnover, unitroot_kpss)
+```
+
+### 2.3 Porównanie modeli prognozujących
+---
+Przetestowano trzy podejścia:
+1. **Naiwna Sezonowa (SNAIVE):** model bazowy kopiujący ostatni wzorzec sezonowy.
+2. **Box-Cox + SNAIVE:** model SNAIVE z zastosowaną transformacją stabilizującą wariancję.
+3. **Dekompozycja STL:** prognozowanie danych odsezonowanych.
+
+```r
+# Budowa modeli porównawczych
+fit <- train |>
+  model(
+    `Naiwna Sezonowa` = SNAIVE(Turnover),
+    `Box-Cox + SNAIVE` = SNAIVE(box_cox(Turnover, lambda)), 
+    `Dekompozycja STL` = decomposition_model(
+      STL(Turnover ~ trend(window = 13) + season(window = "periodic"), robust = TRUE),
+      SNAIVE(season_adjust) 
+    )
+  )
+
+# Generowanie prognoz na okres testowy
+fc <- fit |> forecast(test)
+
+# Wykres porównawczy
+fc |>
+  autoplot(myseries, level = NULL) +
+  labs(title = "Porównanie metod prognozowania",
+       y = "Turnover", x = "Czas")
+```
+![Wykres porównawczy modeli](images/forecast_comparison.png)
+
+#### Wnioski z wizualizacji:
+* Wszystkie modele poprawnie zidentyfikowały sezonowość.
+* Dane rzeczywiste oznaczone czarną linią rosną znacznie szybciej niż prognozy. Sama stabilizacja wariancji nie wystarczyła, by przewidzieć nagły skok obrotów po 2015 roku.
+
+### 2.4 Ocena jakości
+---
+```r
+fc_accuracy <- accuracy(fc, myseries)
+fc_accuracy |>
+  select(.model, RMSE, MAE, MAPE, MASE) |>
+  arrange(RMSE)
+```
+Poniższa tabela przedstawia błędy prognoz na zbiorze testowym:
+
+![Ocena jakości modeli](images/2_4_ocena_jakosci.png)
+
+**Kluczowe obserwacje:**
+1. Najlepszym modelem okazał się **Box-Cox + SNAIVE** (najniższe wartości RMSE, MAE, MAPE).
+2. Transformacja Box-Cox poprawiła wynik (spadek błędu MAPE z 10.8% do 10.1%).
+3. Model Dekompozycja STL uzyskał identyczne wyniki jak Naiwna Sezonowa. W tym przypadku dekompozycja nie wniosła dodatkowej poprawy prognozy.
+4. Wartość **MASE > 1** dla wszystkich modeli wskazuje, że radzą sobie one gorzej na zbiorze testowym niż prosta metoda naiwna na zbiorze uczącym (wynika to ze zmiany trendu).
+
+### 2.5 Analiza reszt modelu Box-Cox + SNAIVE
+---
+Wybrano najlepszy model do szczegółowej analizy błędów.
+
+![Analiza reszt](images/residuals_best_model.png)
+
+#### Interpretacja analizy reszt:
+* **Wykres czasowy:** Reszty znajdują się głównie w wartościach dodatnich, wiec prognoza jest niedoszacowana.
+Rzeczywista sprzedaż rosła szybciej, niż przewidział to model.
+* **Wykres ACF:** Reszty **nie są białym szumem** – w danych wciąż są wzorce.
+* **Histogram:** Rozkład błędów jest przesunięty w prawo (średnia > 0). Prognozy są zbyt niskie względem rzeczywistości.
+
+**Wniosek:** Mimo że Box-Cox + SNAIVE był najlepszy w tej grupie, analiza reszt pokazuje, że potrzebujemy bardziej zaawansowanych modeli (jak ARIMA lub ETS), które lepiej radzą sobie z autokorelacją reszt.

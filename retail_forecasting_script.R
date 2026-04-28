@@ -25,7 +25,7 @@ myseries |>
   labs(
     title = "Wylosowany szereg",
     x = "Czas",
-    y = "Turnover" # obroty ze sprzedaży
+    y = "Turnover"
   )
 
 # Wykres sezonowy
