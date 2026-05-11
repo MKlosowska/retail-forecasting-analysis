@@ -12,11 +12,11 @@ Celem niniejszego projektu jest analiza szeregu czasowego dotyczącego obrotów 
 
 ## 1. Eksploracja danych i wizualizacja
 
-W tej sekcji wczytujemy dane `aus_retail`, losujemy konkretny szereg czasowy dla Tasmanii (branża spożywcza) i badamy jego strukturę: trend, sezonowość oraz korelacje.
+Wczytujemy dane `aus_retail`, losujemy konkretny szereg czasowy dla Tasmanii (branża spożywcza) i badamy jego strukturę: trend, sezonowość oraz korelacje.
 
 ### 1.1 Przygotowanie danych i losowanie szeregu
 ---
-Na początku wczytujemy niezbędne biblioteki oraz wybieramy jedną, konkretną serię danych do analizy.
+Wczytujemy niezbędne biblioteki oraz wybieramy jedną, konkretną serię danych do analizy.
 
 ```r
 library(tseries)
@@ -35,7 +35,7 @@ myseries <- aus_retail |>
 ### 1.2 Wykresy eksploracyjne
 ---
 
-W tej części dokonujemy wizualizacji szeregu, aby zidentyfikować kluczowe wzorce, takie jak trend, sezonowość oraz korelacje.
+Dokonujemy wizualizacji szeregu, aby zidentyfikować kluczowe wzorce, takie jak trend, sezonowość oraz korelacje.
 
 ### Wykres szeregu czasowego
 
@@ -199,7 +199,7 @@ myseries |>
 
 ## 2. Budowa modeli bazowych i ocena prognoz
 
-W tej sekcji dzielimy dane na zbiór uczący i testowy, sprawdzamy stacjonarność oraz porównujemy proste metody prognozowania.
+Dzielimy dane na zbiór uczący i testowy, sprawdzamy stacjonarność oraz porównujemy proste metody prognozowania.
 
 ### 2.1 Podział na zbiór uczący i testowy
 ---
@@ -296,7 +296,7 @@ Rzeczywista sprzedaż rosła szybciej, niż przewidział to model.
 
 ## 3. Modele ETS 
 
-W tej sekcji testujemy zaawansowane modele wykładnicze, które potrafią lepiej dostosować się do trendu i zmieniającej się amplitudy sezonowości.
+Testujemy zaawansowane modele wykładnicze, które potrafią lepiej dostosować się do trendu i zmieniającej się amplitudy sezonowości.
 
 ### 3.1 Dopasowanie modeli Holta-Wintersa
 ---
